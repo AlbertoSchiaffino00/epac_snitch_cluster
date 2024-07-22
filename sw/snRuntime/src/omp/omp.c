@@ -109,6 +109,7 @@ unsigned __attribute__((noinline)) snrt_omp_bootstrap(uint32_t core_idx) {
     dm_init();
     eu_init();
     omp_init();
+    
     if (core_idx == 0) {
         // master hart initializes event unit and runtime
         snrt_cluster_hw_barrier();

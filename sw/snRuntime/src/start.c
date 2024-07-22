@@ -46,11 +46,13 @@ static inline void snrt_init_tls() {
         tls_ptr += size;
         size = (size_t)(&__tbss_end) - (size_t)(&__tbss_start);
         for (int i = 0; i < snrt_cluster_core_num(); i++) {
-            snrt_dma_start_1d((void*)(tls_ptr + i * tls_offset),
-                              (void*)(snrt_zero_memory_ptr()), size);
+          for( int j=0; j<size; j+=4){
+            *((uint32_t*)(tls_ptr + i * tls_offset + j)) = 0;
+          }
+            //     snrt_dma_start_1d((void*)(tls_ptr + i * tls_offset),
+            //                       (void*)(snrt_zero_memory_ptr()), size);
         }
     }
-
     snrt_cluster_hw_barrier();
 }
 #endif
@@ -62,8 +64,12 @@ static inline void snrt_init_bss() {
     // Only one core needs to perform the initialization
     if (snrt_cluster_idx() == 0 && snrt_is_dm_core()) {
         size_t size = (size_t)(&__bss_end) - (size_t)(&__bss_start);
-        snrt_dma_start_1d_wideptr((uint64_t)(&__bss_start),
-                                  (uint64_t)(snrt_zero_memory_ptr()), size);
+        // uint32_t zero_reg[18]= {0}; //fixed zero_reg dimension. TODO aschiaffino:fix this
+        // snrt_dma_start_1d_wideptr((uint64_t)(&__bss_start),
+        //                           (uint64_t)(zero_reg), size);
+        for (int i = 0; i < size; i += 4) {
+            *((uint32_t*)(&__bss_start) + i) = 0;
+        }
     }
 }
 #endif
@@ -87,7 +93,11 @@ static inline void snrt_init_cls() {
         // Clear cbss section
         ptr = (void*)((uint32_t)ptr + size);
         size = (size_t)(&__cbss_end) - (size_t)(&__cbss_start);
-        snrt_dma_start_1d(ptr, (void*)(snrt_zero_memory_ptr()), size);
+
+       // snrt_dma_start_1d(ptr, (void*)(reg_zero), size);
+        for( int i=0; i<size; i+=4){
+            *((uint32_t*)(ptr+i)) = 0;
+        }
     }
 }
 #endif
@@ -106,25 +116,25 @@ static inline void snrt_exit(int exit_code) {
 void snrt_main() {
     int exit_code = 0;
 
-#ifdef SNRT_CRT0_CALLBACK0
-    snrt_crt0_callback0();
-#endif
+// #ifdef SNRT_CRT0_CALLBACK0
+//     snrt_crt0_callback0();
+// #endif
 
 #ifdef SNRT_INIT_TLS
     snrt_init_tls();
 #endif
 
-#ifdef SNRT_CRT0_CALLBACK1
-    snrt_crt0_callback1();
-#endif
+// #ifdef SNRT_CRT0_CALLBACK1
+//     snrt_crt0_callback1();
+// #endif
 
 #ifdef SNRT_INIT_BSS
     snrt_init_bss();
 #endif
 
-#ifdef SNRT_CRT0_CALLBACK2
-    snrt_crt0_callback2();
-#endif
+// #ifdef SNRT_CRT0_CALLBACK2
+//     snrt_crt0_callback2();
+// #endif
 
 #ifdef SNRT_INIT_CLS
     snrt_init_cls();
@@ -135,48 +145,51 @@ void snrt_main() {
     if (snrt_is_dm_core()) snrt_dma_wait_all();
 #endif
 
+
 #ifdef SNRT_CRT0_CALLBACK3
-    snrt_crt0_callback3();
+    snrt_crt0_callback3(); 
 #endif
 
 #ifdef SNRT_INIT_LIBS
     snrt_init_libs();
 #endif
 
-#ifdef SNRT_CRT0_CALLBACK4
-    snrt_crt0_callback4();
-#endif
+// #ifdef SNRT_CRT0_CALLBACK4
+//     snrt_crt0_callback4();
+// #endif
 
 #ifdef SNRT_CRT0_PRE_BARRIER
-    snrt_cluster_hw_barrier();
+    snrt_cluster_hw_barrier(); 
+
 #endif
 
-#ifdef SNRT_CRT0_CALLBACK5
-    snrt_crt0_callback5();
-#endif
+// #ifdef SNRT_CRT0_CALLBACK5
+//     snrt_crt0_callback5();
+// #endif
 
 #ifdef SNRT_INVOKE_MAIN
     extern int main();
     exit_code = main();
 #endif
 
-#ifdef SNRT_CRT0_CALLBACK6
-    snrt_crt0_callback6();
-#endif
+// #ifdef SNRT_CRT0_CALLBACK6
+//     snrt_crt0_callback6();
+// #endif
 
 #ifdef SNRT_CRT0_POST_BARRIER
     snrt_cluster_hw_barrier();
 #endif
+  return;
 
 #ifdef SNRT_CRT0_CALLBACK7
     snrt_crt0_callback7();
 #endif
 
-#ifdef SNRT_CRT0_EXIT
-    snrt_exit(exit_code);
-#endif
+// #ifdef SNRT_CRT0_EXIT
+//     snrt_exit(exit_code);
+// #endif
 
-#ifdef SNRT_CRT0_CALLBACK8
-    snrt_crt0_callback8();
-#endif
+// #ifdef SNRT_CRT0_CALLBACK8
+//     snrt_crt0_callback8();
+// #endif
 }

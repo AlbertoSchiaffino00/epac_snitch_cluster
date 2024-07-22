@@ -119,13 +119,15 @@ inline void wake_workers(void) {
     wait_worker_wfi();
     // Wake the cluster cores. We do this with cluster relative hart IDs and do
     // not wake hart 0 since this is the main thread
-    uint32_t numcores = snrt_cluster_compute_core_num();
-    snrt_int_cluster_set(~0x1 & ((1 << numcores) - 1));
+  //  uint32_t numcores = snrt_cluster_compute_core_num();
+  //  snrt_int_cluster_set(~0x1 & ((1 << numcores) - 1));
+    //write to wakeup register fe which is the interrupt for cores from id 1 to 7
+    *((uint32_t*) 0x20800028 ) = 0xfe;
 }
 inline void worker_wfi(uint32_t cluster_core_idx) {
     __atomic_add_fetch(&eu_p->workers_wfi, 1, __ATOMIC_RELAXED);
     snrt_wfi();
-    snrt_int_cluster_clr(1 << cluster_core_idx);
+//    snrt_int_cluster_clr(1 << cluster_core_idx);
     __atomic_add_fetch(&eu_p->workers_wfi, -1, __ATOMIC_RELAXED);
 }
 
@@ -197,7 +199,6 @@ inline void eu_exit(uint32_t core_idx) {
 inline void eu_event_loop(uint32_t cluster_core_idx) {
     uint32_t scratch;
     uint32_t nthds;
-
     // count number of workers in loop
     __atomic_add_fetch(&eu_p->workers_in_loop, 1, __ATOMIC_RELAXED);
 
@@ -213,12 +214,12 @@ inline void eu_event_loop(uint32_t cluster_core_idx) {
     while (1) {
         // check for exit
         if (eu_p->exit_flag) {
-#ifdef EU_USE_GLOBAL_CLINT
-            snrt_interrupt_disable(IRQ_M_SOFT);
-#else
-            // TODO colluca: should this be "disable"?
-            snrt_interrupt_enable(IRQ_M_CLUSTER);
-#endif
+// #ifdef EU_USE_GLOBAL_CLINT
+//             snrt_interrupt_disable(IRQ_M_SOFT);
+// #else
+//             // TODO colluca: should this be "disable"?
+//             snrt_interrupt_enable(IRQ_M_CLUSTER);
+// #endif
             return;
         }
 
@@ -236,6 +237,7 @@ inline void eu_event_loop(uint32_t cluster_core_idx) {
         // enter wait for interrupt
         __atomic_add_fetch(&eu_p->e.fini_count, 1, __ATOMIC_RELAXED);
         worker_wfi(cluster_core_idx);
+
     }
 }
 
@@ -261,7 +263,6 @@ inline int eu_dispatch_push(void (*fn)(void *, uint32_t), uint32_t argc,
 
     EU_PRINTF(10, "eu_dispatch_push success, workers %d in loop %d\n", nthreads,
               eu_p->workers_in_loop);
-
     return 0;
 }
 

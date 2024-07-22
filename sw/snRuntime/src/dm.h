@@ -68,7 +68,7 @@
 typedef struct {
     uint64_t src;
     uint64_t dst;
-    uint32_t size;
+    size_t size;
     uint32_t sstrd;
     uint32_t dstrd;
     uint32_t nreps;
@@ -119,29 +119,24 @@ extern volatile dm_t *volatile dm_p_global;
 // Functions
 //================================================================================
 
-#ifdef DM_USE_GLOBAL_CLINT
-inline void wfi_dm(uint32_t cluster_core_idx) {
-    (void)cluster_core_idx;
-    snrt_int_sw_poll();
-}
-inline void wake_dm(void) {
-    uint32_t basehart = snrt_cluster_core_base_hartid();
-    snrt_int_sw_set(basehart + snrt_cluster_dm_core_idx());
-}
-#else
+
+#ifndef DM_USE_GLOBAL_CLINT
 inline void wfi_dm(uint32_t cluster_core_idx) {
     __atomic_add_fetch(&dm_p->dm_wfi, 1, __ATOMIC_RELAXED);
     snrt_wfi();
-    snrt_int_cluster_clr(1 << cluster_core_idx);
+ //   snrt_int_cluster_clr(1 << cluster_core_idx);
     __atomic_add_fetch(&dm_p->dm_wfi, -1, __ATOMIC_RELAXED);
 }
 inline void wake_dm(void) {
     // wait for DM to sleep before sending wakeup
     while (!__atomic_load_n(&dm_p->dm_wfi, __ATOMIC_RELAXED))
         ;
-    snrt_int_cluster_set(1 << snrt_cluster_compute_core_num());
+  //  snrt_int_cluster_set(1 << snrt_cluster_compute_core_num());
+    //write to wakeup register 0x100 which is the interrupt DMA
+    *((uint32_t*) 0x20800028 ) = 0x100;
+
 }
-#endif  // #ifdef DM_USE_GLOBAL_CLINT
+#endif  // #ifndef DM_USE_GLOBAL_CLINT
 
 /**
  * @brief Init the data mover and load a pointer to the DM struct in to TLS.
@@ -152,11 +147,6 @@ inline void wake_dm(void) {
 inline void dm_init(void) {
     // create a data mover instance
     if (snrt_is_dm_core()) {
-#ifdef DM_USE_GLOBAL_CLINT
-        snrt_interrupt_enable(IRQ_M_SOFT);
-#else
-        snrt_interrupt_enable(IRQ_M_CLUSTER);
-#endif
         dm_p = (dm_t *)snrt_l1alloc(sizeof(dm_t));
         snrt_memset((void *)dm_p, 0, sizeof(dm_t));
         dm_p_global = dm_p;
@@ -179,11 +169,12 @@ inline void dm_main(void) {
     DM_PRINTF(10, "enter main\n");
 
     while (!do_exit) {
+
         /// New transaction to issue?
         if (dm_p->queue_fill) {
-            // wait until DMA is ready
-            while (__builtin_sdma_stat(DM_STATUS_WOULD_BLOCK))
-                ;
+            // // wait until DMA is ready
+            // while (__builtin_sdma_stat(DM_STATUS_WOULD_BLOCK))
+            //     ;
 
             t = &dm_p->queue[dm_p->queue_back];
 
@@ -193,7 +184,10 @@ inline void dm_main(void) {
                                           t->dstrd, t->nreps, t->cfg);
             } else {
                 DM_PRINTF(10, "start oned\n");
-                __builtin_sdma_start_oned(t->src, t->dst, t->size, t->cfg);
+
+                __builtin_sdma_start_oned(t->src, t->dst, t->size, t->cfg);           
+                // snrt_dma_start_1d_wideptr(t->dst, t->src, t->size);
+
             }
 
             // bump
@@ -212,6 +206,11 @@ inline void dm_main(void) {
                         dm_p->stat_pvalid = 1;
                         dm_p->stat_q = 0;
                     }
+                    // snrt_dma_wait_all();
+                    // DM_PRINTF(50, "idle\n");
+                    // dm_p->stat_pvalid = 1;
+                    // dm_p->stat_q = 0;
+                    
                     break;
                 case STAT_EXIT:
                     do_exit = 1;
@@ -230,11 +229,6 @@ inline void dm_main(void) {
         }
     }
     DM_PRINTF(10, "dm: exit\n");
-#ifdef DM_USE_GLOBAL_CLINT
-    snrt_interrupt_disable(IRQ_M_SOFT);
-#else
-    snrt_interrupt_disable(IRQ_M_CLUSTER);
-#endif
     return;
 }
 
@@ -258,7 +252,7 @@ inline void dm_exit(void) {
  * @param n number of bytes to copy
  * @return transfer ID
  */
-inline void dm_memcpy_async(void *dest, const void *src, size_t n) {
+inline void dm_memcpy_async(uint64_t dest, uint64_t src, size_t n) {
     uint32_t s;
     volatile dm_task_t *t;
 
@@ -275,7 +269,7 @@ inline void dm_memcpy_async(void *dest, const void *src, size_t n) {
     t = &dm_p->queue[dm_p->queue_front];
     t->src = (uint64_t)src;
     t->dst = (uint64_t)dest;
-    t->size = (uint32_t)n;
+    t->size = (size_t)n;
     t->twod = 0;
     t->cfg = 0;
 
@@ -284,6 +278,7 @@ inline void dm_memcpy_async(void *dest, const void *src, size_t n) {
     dm_p->queue_front = (dm_p->queue_front + 1) % DM_TASK_QUEUE_SIZE;
 
     _dm_mtx_release();
+
 }
 
 /**
@@ -366,7 +361,9 @@ inline void dm_wait(void) {
     // whenever stat_pvalid is non-zero, the DMA has completed all transfers
     while (!dm_p->stat_pvalid)
         ;
+
     _dm_mtx_release();
+
 }
 
 /**

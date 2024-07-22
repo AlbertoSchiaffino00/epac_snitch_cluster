@@ -10,7 +10,7 @@ inline snrt_dma_txid_t snrt_dma_start_1d_wideptr(uint64_t dst, uint64_t src,
                                                  size_t size) {
     // Current DMA does not allow transfers with size == 0 (blocks)
     // TODO(colluca) remove this check once new DMA is integrated
-    if (size > 0) {
+    if (size > 0U) {
         register uint32_t reg_dst_low asm("a0") = dst >> 0;    // 10
         register uint32_t reg_dst_high asm("a1") = dst >> 32;  // 11
         register uint32_t reg_src_low asm("a2") = src >> 0;    // 12
@@ -19,7 +19,7 @@ inline snrt_dma_txid_t snrt_dma_start_1d_wideptr(uint64_t dst, uint64_t src,
 
         // dmsrc a2, a3
         asm volatile(
-            ".word (0b0000000 << 25) | \
+            ".word (0b0000000 << 25) | \ 
                 (     (13) << 20) | \
                 (     (12) << 15) | \
                 (    0b000 << 12) | \

@@ -8,7 +8,8 @@ _start:
 
 #ifdef SNRT_INIT_INT_REGS
 snrt.crt0.init_int_registers:
-    # Clear integer registers
+    # Clear integer registers  
+    fence.i
     mv t0, x0
     mv t1, x0
     mv t2, x0
@@ -36,6 +37,7 @@ snrt.crt0.init_int_registers:
     mv s9, x0
     mv s10, x0
     mv s11, x0
+
 #endif
 
 #ifdef SNRT_INIT_FP_REGS
@@ -182,11 +184,30 @@ snrt.crt0.init_interrupt:
 snrt.crt0.main:
     call snrt_main
 
+
 #ifdef SNRT_CRT0_PARK
 snrt.crt0.end:
-1:
-    wfi
-    j       1b
+    la t0, eoc_address
+    li t1, 0x1
+    sw t1, 0(t0)
+#    la        t0, cluster_base_hart_id_reg
+#    lw        t0, 0(t0)
+#    csrr      t1, mhartid
+#    bne       t0, t1, 1f  # only first core writes to EOC address
+#    lw        a0, 0(s0)  # load accumulated return value from special slot
+#    slli      a0, a0, 1  # shift in a 1 LSB to indicate execution completion
+#    ori       a0, a0, 1
+#    la        t0, eoc_address
+#    sw        a0, 0(t0)
+    la	      t0, fetch_enable_reg
+    sw	      zero, 0(t0)
+#    j 3f
+#1:  la        t0, fetch_enable_reg
+#2:  lw        t1, 0(t0)
+#    bnez      t1, 2b
+3:  la        t0, bootrom_start
+    jr        t0
+    
 #endif
 
 #ifdef SNRT_INIT_INTERRUPT
